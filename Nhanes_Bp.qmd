@@ -1,0 +1,1152 @@
+---
+title: "STATISTICAL ASSIGNMENT"
+df-print: kable
+code-overflow: wrap
+execute: 
+  echo: true
+  warning: false
+  message: false
+format: html
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+library(MASS)
+library(tidyverse)
+library(tidymodels)
+library(haven)
+library(finalfit)
+library(gtsummary)
+library(janitor)
+library(patchwork)
+library(car)
+library(gt)
+theme_set(theme_bw())
+```
+
+```{r}
+
+nhanes <- read_rds("nhanes_regression.rds")
+nhanes <- nhanes %>% 
+  mutate(IPR_Category = factor(IPR_Category) %>% 
+           fct_relevel("Low Income") %>% 
+           ff_label("Income category"))
+
+glimpse(nhanes)
+```
+
+```{r}
+# load("table_one.RData")
+# table_one
+```
+
+```{r}
+
+# Visualize blood pressure distribution by age
+sbp <- ggplot(nhanes, aes(x = RIDAGEYR, y = SBP)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "loess", col = "red") +
+  labs(title = "Association Between Age and Systolic BP",
+       x = "Age (Years)", y = "Systolic Blood Pressure (mmHg)")+
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+print(sbp)
+```
+
+```{r}
+
+# Visualize blood pressure distribution by age
+dbp <- ggplot(nhanes, aes(x = RIDAGEYR, y = DBP)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "loess", col = "red") +
+  labs(title = "Age &  Diastolic BP",
+       x = "Age (Years)", y = "Diastolic Blood Pressure (mmHg)")+
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+print(dbp)
+```
+
+```{r}
+# Visualize blood pressure distribution by age
+pp <- ggplot(nhanes, aes(x = RIDAGEYR, y = pulse_pressure)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "loess", col = "red") +
+  labs(title = " Age & Pulse Pressure",
+       x = "Age (Years)", y = " Pulse Pressure (mmHg)")+
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+print(pp)
+```
+
+```{r}
+sbp/(dbp + pp)
+```
+
+```{r}
+# Boxplot by sex
+ggplot(nhanes, aes(x = sex, y = SBP,fill = sex)) +
+  geom_boxplot() +
+  labs(title = "Blood Pressure by Sex", x = "Sex", y = "Systolic BP")+
+  theme(legend.position = "None") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+```{r}
+# Boxplot by Race/Ethnicity
+nhanes %>% 
+ggplot(aes(x = raceeth, y = SBP,fill = raceeth)) +
+  geom_boxplot() +
+  labs(title = "Blood Pressure by Race/Ethnicity", x = "Race/Ethnicity", y = "Systolic BP") +
+  theme(legend.position = "None") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+```{r}
+
+# Boxplot by income
+nhanes %>% filter(!is.na(IPR_Category)) %>% 
+ggplot(aes(x = IPR_Category, y = SBP, fill = IPR_Category, alpha = 0.1)) +
+  geom_boxplot() +
+labs(title = "Blood Pressure by Income", x = "Income category", y = "Systolic BP")+
+  theme(legend.position = "None") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_text(angle = 30, hjust = 1))
+```
+
+```{r}
+sbp_hist <- ggplot(nhanes, aes(x = SBP)) +
+  geom_histogram(binwidth = 5, fill = "skyblue", color = "black") +
+  labs(title = "Distribution of Systolic Blood Pressure",
+       x = "Systolic BP",
+       y = "Frequency")+
+   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+ sbp_qq <- ggplot(nhanes, aes(sample = SBP)) +
+  stat_qq() +
+  stat_qq_line(color = "red") +
+  labs(title = "Q-Q Plot for SBP") +
+  theme_minimal() +
+   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+ 
+ sbp_hist + sbp_qq
+
+```
+
+#### Model with Interaction Terms
+
+```{r}
+
+model1 <- nhanes %>% 
+  lm(SBP ~ RIDAGEYR* sex + RIDAGEYR*raceeth + RIDAGEYR*IPR_Category +
+     RIDAGEYR*Insurance_Status, subset = flag =="In Regression Sample", data = .)
+
+tidy(model1, conf.int = TRUE) %>% 
+  mutate(across(where(is.numeric), \(x) round(x,2)))
+```
+
+#### Model Diagnostics
+
+```{r}
+
+model_diagnostics <- augment(model1)
+
+```
+
+### Residual Normality Check
+
+```{r}
+
+# Histogram of residuals
+ggplot(model_diagnostics, aes(x = .resid)) +
+  geom_histogram(bins = 30, fill = "blue", alpha = 0.5) +
+  labs(title = "Histogram of Residuals", x = "Residuals", y = "Frequency") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+
+# QQ plot of residuals
+ggplot(model_diagnostics, aes(sample = .resid)) +
+  stat_qq() +
+  stat_qq_line(color = "red") +
+  labs(title = "QQ Plot of Residuals")  +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+### Homoscedasticity
+
+```{r}
+# Residuals vs. Fitted Values
+ggplot(model_diagnostics, aes(x = .fitted, y = .resid)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "loess", color = "red") +
+labs(title = "Residuals vs. Fitted Values", x = "Fitted Values", y = "Residuals") +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+```{r}
+# Variance Inflation Factor (VIF)
+vif(model1, type = "predictor") 
+```
+
+### Influential Points
+
+```{r}
+# Cook's Distance Plot
+ggplot(model_diagnostics, aes(x = seq_along(.cooksd), y = .cooksd)) +
+  geom_bar(stat = "identity", fill = "blue", alpha = 0.5) +
+  geom_hline(yintercept = 4 / nrow(model_diagnostics), color = "red") +
+  labs(title = "Cook’s Distance for Each Observation", x = "Observation Index", y = "Cook's Distance")  +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+### Robust standard errors to correct heteroscedasticity
+
+```{r}
+
+library(sandwich)
+library(lmtest)
+coeftest(model1, vcov = vcovHC(model1, type = "HC3")) %>% 
+  tidy(conf.int = TRUE)  %>% 
+  mutate(across(where(is.numeric), \(x) round(x,2)))
+```
+
+```{r}
+# Reduced model without interactions
+model_no_interactions <- lm(SBP ~ RIDAGEYR + sex + raceeth + IPR_Category + Insurance_Status,  subset = flag =="In Regression Sample",
+                            data = nhanes)
+
+
+
+# Likelihood ratio test (ANOVA)
+anova(model_no_interactions, model1, test = "Chisq")
+
+glance(model_no_interactions)
+glance(model1)
+```
+
+These results suggest that the relationship between age and systolic blood pressure (SBP) differs significantly across demographic and socioeconomic groups, justifying the inclusion of interaction terms in the final model.
+
+#### 
+
+## PART II
+
+```{r}
+
+# Age vs SBP by sex
+nhanes %>% 
+ggplot( aes(x = RIDAGEYR, y = SBP, color = sex)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(method = "lm",formula = y ~ x, se = FALSE) +
+  labs(title = "Systolic BP vs Age by Sex")
+```
+
+```{r}
+# Age vs SBP by race
+nhanes %>% 
+ggplot( aes(x = RIDAGEYR, y = SBP, color = raceeth)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "lm",formula = y ~ x, se = FALSE) +
+  labs(title = "Systolic BP vs Age by Race",
+       color = "Race/Ethnicity")
+```
+
+```{r}
+# Age vs SBP by Insurance Status
+# Age vs SBP by race
+nhanes %>% filter(!is.na (Insurance_Status)) %>% 
+  ggplot( aes(x = RIDAGEYR, y = SBP, color = Insurance_Status)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "lm",formula = y ~ x, se = FALSE) +
+  labs(title = "Systolic BP vs Age by Insurance Status")
+```
+
+```{r}
+# Age vs SBP by Income
+nhanes %>% 
+  ggplot( aes(x = RIDAGEYR, y = SBP, color = IPR_Category)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "lm",formula = y ~ x, se = FALSE) +
+  labs(title = "Systolic BP vs Age by Income")
+```
+
+```{r}
+vars <- c("sex","raceeth","IPR_Category","Insurance_Status")
+
+# Create and fit interaction models, then tidy the results
+models <- vars %>%
+  set_names() %>%
+  map(~ {
+    formula <- as.formula(str_c("SBP ~ RIDAGEYR * ", .x))
+    lm(formula, data = nhanes)  
+  })
+
+# Tidy model outputs
+model_results <- models %>%
+  map(tidy)
+
+model_results
+```
+
+```{r}
+# Extract just the interaction terms from each model
+interaction_terms <- model_results %>%
+  map_dfr(~ filter(.x, str_detect(term, "RIDAGEYR:")), .id = "variable")
+
+interaction_terms %>% 
+  select(variable,term,estimate,p.value)
+```
+
+We are assessing whether the relationship between **age** and **systolic blood pressure (SBP)** is **modified** by key demographic and socioeconomic factors, including **sex**, **race/ethnicity**, **income**, and **insurance status**. To evaluate this, we introduce **interaction terms** between age and each of these covariates in separate linear regression models. These interaction terms allow the effect (i.e., slope) of age on blood pressure to **vary across levels** of each covariate. A statistically significant interaction would indicate that the association between age and SBP is **not uniform** across subgroups, suggesting **effect modification** by the corresponding factor.
+
+**Model Interpretation**
+
+**Sex:**\
+The interaction term between age and sex (RIDAGEYR:sexFemale) was positive and highly significant (p \< 0.001), suggesting that the increase in systolic blood pressure (SBP) with age is greater among females compared to males. Specifically, for each additional year of age, females experience an approximately 0.24 mmHg greater increase in SBP than males. This indicates a significant effect modification by sex.
+
+**Race/Ethnicity:**\
+The interaction between age and race/ethnicity revealed that the age-related increase in SBP was significantly stronger among Non-Hispanic Black individuals (p = 0.001) and Non-Hispanic Asian individuals (p = 0.018). These findings suggest that the effect of age on blood pressure differs across racial and ethnic groups, with certain populations experiencing a steeper rise in SBP with increasing age. This supports the presence of effect modification by race/ethnicity.
+
+**Income (IPR Category):**\
+The interaction terms between age and income level were not statistically significant (p \> 0.1), indicating that the relationship between age and SBP does not vary meaningfully across income categories. There is no evidence of effect modification by income.
+
+**Insurance Status:**\
+The interaction between age and insurance status was not statistically significant (p = 0.194), suggesting that the association between age and SBP is similar for insured and uninsured individuals. There is no evidence of effect modification by insurance status.
+
+```{r}
+
+
+# Extract all results for 'sex'
+sex_results <- pluck(model_results, "sex")
+sex_results
+```
+
+```{r}
+insurance_results <- pluck(model_results,"Insurance_status")
+income_results <- pluck(model_results,"IPR_Category")
+race_results <- pluck(model_results,"raceeth")
+```
+
+```{r}
+income_results
+insurance_results
+race_results
+```
+
+## Diastolic BP
+
+```{r}
+vars <- c("sex","raceeth","IPR_Category","Insurance_Status")
+
+# Create and fit interaction models, then tidy the results
+dbp_models <- vars %>%
+  set_names() %>%
+  map(~ {
+    formula <- as.formula(str_c("DBP ~ RIDAGEYR * ", .x))
+    lm(formula, data = nhanes)  
+  })
+
+# Tidy model outputs
+dbp_model_results <- dbp_models %>%
+  map(tidy)
+
+dbp_model_results
+```
+
+### Polynomial Regression
+
+```{r}
+
+
+# Age vs DBP by sex
+nhanes %>%
+  ggplot(aes(x = RIDAGEYR, y = DBP, color = sex)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "lm", formula = y ~ x + I(x^2), se = FALSE) +  
+  labs(title = "Systolic BP vs Age by Sex")
+
+
+
+# Age vs DBP by race
+nhanes %>% 
+  ggplot( aes(x = RIDAGEYR, y = DBP, color = raceeth)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "lm",formula = y ~ x + I(x^2), se = FALSE) +
+  labs(title = "Systolic BP vs Age by Sex")
+
+# Age vs DBP by Insurance Status
+nhanes %>% 
+  ggplot( aes(x = RIDAGEYR, y = DBP, color = Insurance_Status)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "lm",formula = y ~ x + I(x^2), se = FALSE) +
+  labs(title = "Systolic BP vs Age by Sex")
+
+# Age vs DBP Income
+nhanes %>% 
+  ggplot( aes(x = RIDAGEYR, y = DBP, color = IPR_Category)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "lm",formula = y ~ x + I(x^2), se = FALSE) +
+  labs(title = "Systolic BP vs Age by Sex")
+```
+
+### 
+
+```{r}
+# Polynomial interaction models with age^2
+dbp_poly_models <- vars %>%
+  set_names() %>%
+  map(~ {
+    formula <- as.formula(str_c("DBP ~ RIDAGEYR * ", .x, " + I(RIDAGEYR^2) * ", .x))
+    lm(formula, data = nhanes)
+  })
+
+# Tidy outputs
+dbp_poly_model_results <- dbp_poly_models %>%
+  map(tidy)
+
+dbp_poly_model_results
+```
+
+### Natural Spline with Two Degrees of Freedom
+
+```{r}
+library(splines)
+
+# Natural spline interaction models with df = 2
+dbp_spline_models <- vars %>%
+  set_names() %>%
+  map(~ {
+    formula <- as.formula(str_c("DBP ~ ns(RIDAGEYR, df = 2) * ", .x))
+    lm(formula, data = nhanes)
+  })
+
+# Tidy outputs
+dbp_spline_model_results <- dbp_spline_models %>%
+  map(tidy)
+
+dbp_spline_model_results
+```
+
+```{r}
+ # AIC(dbp_poly_model_results,dbp_spline_model_results)
+```
+
+```{r}
+# Age vs DBP by Insurance status
+nhanes %>% filter(!is.na(Insurance_Status)) %>% 
+  ggplot(aes(x = RIDAGEYR, y = DBP, color = Insurance_Status)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(
+    method = "lm",
+    formula = y ~ ns(x, df = 2),
+    se = FALSE
+  ) +
+  labs(title = "Diastolic BP vs Age by Insurance Status",
+       color = "Insurance status",
+       x = "Age (years)",
+       y = "Diastolic Blood Pressure (mmHg)") +
+   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+```{r}
+
+# Age vs DBP by sex
+nhanes %>% 
+  ggplot(aes(x = RIDAGEYR, y = DBP, color = sex)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(
+    method = "lm",
+    formula = y ~ ns(x, df = 2),
+    se = FALSE
+  ) +
+  labs(title = "Diastolic BP vs Age by Sex",
+       color = "Sex",
+       x = "Age (years)",
+       y = "Diastolic Blood Pressure (mmHg)") +
+   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+```{r}
+# Age vs DBP by race/ethnicity
+nhanes %>% 
+  ggplot(aes(x = RIDAGEYR, y = DBP, color = raceeth)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(
+    method = "lm",
+    formula = y ~ ns(x, df = 2),
+    se = FALSE
+  ) +
+  labs(title = "Diastolic BP vs Age by Race/Ethnicity",
+       color = "Race/Ethnicity",
+       x = "Age (years)",
+       y = "Diastolic Blood Pressure (mmHg)") +
+   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+```{r}
+# Age vs DBP by income
+nhanes %>%  
+  ggplot(aes(x = RIDAGEYR, y = DBP, color = IPR_Category)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(
+    method = "lm",
+    formula = y ~ ns(x, df = 2),
+    se = FALSE
+  ) +
+  labs(title = "Diastolic BP vs Age by Income Category",
+       color = "Income category",
+       x = "Age (years)",
+       y = "Diastolic Blood Pressure (mmHg)") +
+   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+### NHANES With Drug
+
+```{r}
+nhanes_drug <- read_rds("nhanes_with_drug.rds")
+
+```
+
+```{r}
+nhanes_drug %>% filter(!is.na (Insurance_Status)) %>% 
+  ggplot( aes(x = RIDAGEYR, y = SBP)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "lm",formula = y ~ x, se = FALSE) +
+  labs(title = "Systolic BP vs Age by Insurance Status")
+```
+
+```{r}
+nhanes %>% filter(!is.na (Insurance_Status)) %>% 
+  ggplot( aes(x = RIDAGEYR, y = SBP, color = Insurance_Status)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "lm",formula = y ~ x, se = FALSE) +
+  labs(title = "Systolic BP vs Age by Insurance Status")
+```
+
+```{r}
+# Age vs SBP by Income
+nhanes %>% 
+  ggplot( aes(x = RIDAGEYR, y = SBP, color = IPR_Category)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "lm",formula = y ~ x, se = FALSE) +
+  labs(title = "Systolic BP vs Age by Income")
+
+
+
+
+# Age vs SBP by Income
+nhanes_drug %>% filter(!is.na(IPR_Category)) %>% 
+  ggplot( aes(x = RIDAGEYR, y = SBP, color = IPR_Category)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "lm",formula = y ~ x, se = FALSE) +
+  labs(title = "Systolic BP vs Age by Income")
+```
+
+```{r}
+vars <- c("sex","raceeth","IPR_Category","Insurance_Status")
+
+# Create and fit interaction models, then tidy the results
+models_drug <- vars %>%
+  set_names() %>%
+  map(~ {
+    formula <- as.formula(str_c("SBP ~ RIDAGEYR * ", .x))
+    lm(formula, data = nhanes_drug)  
+  })
+
+# Tidy model outputs
+drug_model_results <- models_drug %>%
+  map(tidy)
+
+drug_model_results
+```
+
+```{r}
+# Extract just the interaction terms from each model
+drug_interaction_terms <- drug_model_results %>%
+  map_dfr(~ filter(.x, str_detect(term, "RIDAGEYR:")), .id = "variable")
+
+drug_interaction_terms %>% 
+  select(variable,term,estimate,p.value)
+```
+
+### Full Dataset
+
+```{r}
+nhanes_full <- read_rds("nhanes_main.rds")
+```
+
+```{r}
+nhanes_full %>% filter(!is.na (Insurance_Status)) %>% 
+  ggplot( aes(x = RIDAGEYR, y = SBP)) +
+  geom_point(aes(color = factor(antihypertensives)),alpha = 0.5) +
+  geom_smooth(method = "lm",formula = y ~ x, se = FALSE,linewidth = 1,color = "black") +
+labs(title = "Association Between Age and Systolic BP",
+       x = "Age (Years)", y = "Systolic Blood Pressure (mmHg)",
+     color = "Medication Status")+
+  theme(legend.position = "bottom") +
+   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+
+
+nhanes_full %>% filter(!is.na (Insurance_Status)) %>% 
+  ggplot( aes(x = RIDAGEYR, y = SBP,color = factor(antihypertensives))) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "lm",formula = y ~ x, se = FALSE,linewidth = 1) +
+  labs(title = "Association Between Age and Systolic BP by Antihypertensive Use",
+       x = "Age (Years)", y = "Systolic Blood Pressure (mmHg)",
+     color = "Medication Status")+
+  theme(legend.position = "bottom") +
+   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+```{r}
+nhanes_full %>% filter(!is.na (Insurance_Status)) %>% 
+  ggplot( aes(x = RIDAGEYR, y = DBP)) +
+  geom_point(aes(color = factor(antihypertensives)),alpha = 0.5) +
+  geom_smooth( se = FALSE,linewidth = 1,color = "black") +
+labs(title = "Association Between Age and Diastolic BP",
+       x = "Age (Years)", y = "Diastolic Blood Pressure (mmHg)",
+     color = "Medication Status")+
+  theme(legend.position = "bottom") +
+   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+
+
+nhanes_full %>% filter(!is.na (Insurance_Status)) %>% 
+  ggplot( aes(x = RIDAGEYR, y = DBP,color = factor(antihypertensives))) +
+  geom_point(alpha = 0.1) +
+  geom_smooth( se = FALSE,linewidth = 1) +
+  labs(title = "Association Between Age and  Diastolic BP by Antihypertensive Use",
+       x = "Age (Years)", y = " Diastolic Blood Pressure (mmHg)",
+     color = "Medication Status")+
+  theme(legend.position = "bottom") +
+   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+```{r}
+
+nhanes_full %>% filter(!is.na (Insurance_Status)) %>% 
+  ggplot( aes(x = RIDAGEYR, y = DBP)) +
+  geom_point(aes(color = factor(antihypertensives)),alpha = 0.5) +
+  geom_smooth( se = FALSE,linewidth = 1,color = "black") +
+  labs(title = "Diastolic BP vs Age ", color = "Antihypertensives")+
+  theme(legend.position = "bottom")
+```
+
+### Participants Not on Antihypertensives
+
+```{r}
+
+model_int <- nhanes_full %>% 
+  filter(flag == "In Regression Sample") %>% 
+lm(SBP ~ RIDAGEYR*antihypertensives, data = .) 
+
+tidy(model_int)
+```
+
+```{r}
+model_full <- nhanes_full %>% 
+  filter(flag == "In Regression Sample") %>% 
+lm(SBP ~ RIDAGEYR + antihypertensives, data = .) 
+
+tidy(model_full)
+
+```
+
+```{r}
+nhanes_full %>% 
+  ggplot(aes(x = RIDAGEYR))+
+  geom_histogram(fill = "steelblue",color = "black")+
+  labs(x = "Age (years)",
+       y = "Frequency",
+       title = "Age Distribution")+
+   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+
+nhanes_full %>% 
+  ggplot(aes(x = SBP))+
+  geom_histogram(fill = "steelblue",color = "black")+
+  labs(x = "Systolic Blood Pressure (mmHg)",
+       y = "Frequency",
+       title = "Distribution of Systolic Blood Pressure")+
+   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+
+
+nhanes_full %>% 
+  ggplot(aes(x = DBP))+
+  geom_histogram(fill = "steelblue",color = "black")+
+  labs(x = "Diastolic Blood Pressure (mmHg)",
+       y = "Frequency",
+       title = "Distribution of Diastolic Blood Pressure")+
+   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+```{r}
+
+library(patchwork)
+
+p_age <- nhanes_full %>% 
+  ggplot(aes(x = RIDAGEYR))+
+  geom_histogram(fill = "steelblue",color = "black")+
+  labs(x = "Age (years)",
+       y = "Frequency",
+       title = "Age Distribution")+
+   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+
+p_sbp <- nhanes_full %>% 
+  ggplot(aes(x = SBP))+
+  geom_histogram(fill = "steelblue",color = "black")+
+  labs(x = "Systolic Blood Pressure (mmHg)",
+       y = "Frequency",
+       title = "Systolic Blood Pressure")+
+   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+
+
+p_dbp <- nhanes_full %>% 
+  ggplot(aes(x = DBP))+
+  geom_histogram(fill = "steelblue",color = "black")+
+  labs(x = "Diastolic Blood Pressure (mmHg)",
+       y = "Frequency",
+       title = "Diastolic Blood Pressure")+
+   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+p_age/(p_sbp + p_dbp)
+
+p_sbp + p_dbp
+```
+
+```{r}
+tbl_regression(model_int) %>%
+  bold_labels()
+
+
+tbl_regression(model_full) %>%
+  bold_labels()
+```
+
+### Sex
+
+```{r}
+ model_sex <- nhanes_full %>% 
+  lm(SBP ~ RIDAGEYR*sex + Insurance_Status + IPR_Category + raceeth + antihypertensives, data = .)
+ 
+ sex_tbl <- tbl_regression(model_sex) %>%
+  bold_labels()
+ 
+ #gtsave(as_gt(sex_tbl), filename = "sex_regression_table.png") 
+ 
+ 
+ as_gt(sex_tbl) %>%
+  tab_options(
+    table.font.size = "small",
+    data_row.padding = px(2)
+  )
+```
+
+```{r}
+# Create prediction grid: vary age and sex, hold others constant
+new_data_sex <- expand.grid(
+  RIDAGEYR = seq(18, 80, by = 1),
+  sex = c("Male", "Female"),
+  IPR_Category = "Middle Income",         # hold constant
+  Insurance_Status = "Insured",
+  raceeth = "Mexican American",
+    antihypertensives = "Not on Meds"
+)
+
+# Predict from model
+new_data_sex$SBP_pred_sex <- predict(model_sex, newdata = new_data_sex)
+
+```
+
+```{r}
+ggplot() +
+  geom_point(data = nhanes_full,
+             aes(x = RIDAGEYR, y = SBP, color = sex),
+             alpha = 0.1) +
+  geom_line(data = new_data_sex,
+            aes(x = RIDAGEYR, y = SBP_pred_sex, color = sex),
+            linewidth = 1.2) +
+  labs(
+    title = "Adjusted SBP vs Age by Sex",
+    x = "Age (years)",
+    y = "Predicted Systolic BP",
+    color = "Sex"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5, face = "bold")
+  )
+
+```
+
+### Insurance Status
+
+```{r}
+ model_insurance <- nhanes_full %>% 
+  lm(SBP ~ RIDAGEYR*Insurance_Status + sex + IPR_Category + raceeth + antihypertensives, data = .)
+ 
+ tbl_regression(model_insurance) %>%
+  bold_labels() %>% 
+  as_gt() %>%
+  tab_options(
+    table.font.size = "small",
+    data_row.padding = px(2)
+  )
+```
+
+```{r}
+
+# Create a new data grid for prediction by insurance status
+new_data_insurance <- expand.grid(
+  RIDAGEYR = seq(18, 80, by = 1),
+  Insurance_Status = c("Insured", "Uninsured"),
+  sex = "Male",
+  IPR_Category = "Middle Income",
+  raceeth = "Mexican American",
+  antihypertensives = "Not on Meds"
+)
+
+# Generate predictions based on your fitted model
+new_data_insurance$SBP_pred_insurance <- predict(model_insurance, newdata = new_data_insurance)
+
+```
+
+```{r}
+library(ggplot2)
+
+ggplot() +
+  geom_point(data = nhanes_full,
+             aes(x = RIDAGEYR, y = SBP, color = Insurance_Status),
+             alpha = 0.1) +
+  geom_line(data = new_data_insurance,
+            aes(x = RIDAGEYR, y = SBP_pred_insurance, color = Insurance_Status),
+            linewidth = 1.2) +
+  labs(
+    title = "Adjusted SBP vs Age by Insurance Status",
+    x = "Age (years)",
+    y = "Predicted Systolic BP",
+    color = "Insurance Status"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5, face = "bold")
+  )
+
+```
+
+```{r}
+ model_income <- nhanes_full %>% 
+  lm(SBP ~ RIDAGEYR*IPR_Category  + Insurance_Status + sex +  raceeth + antihypertensives, data = .)
+ 
+ tbl_regression(model_income) %>%
+  bold_labels() %>% 
+  as_gt() %>%
+  tab_options(
+    table.font.size = "small",
+    data_row.padding = px(2)
+  )
+```
+
+```{r}
+# Create prediction grid for income category
+new_data_income <- expand.grid(
+  RIDAGEYR = seq(18, 80, by = 1),
+  IPR_Category = c("Low Income", "Middle Income", "High Income"),
+  sex = "Male",
+  Insurance_Status = "Insured",
+  raceeth = "Mexican American",
+  antihypertensives = "Not on Meds"
+)
+
+# Predict SBP from the income interaction model
+new_data_income$SBP_pred_income <- predict(model_income, newdata = new_data_income)
+```
+
+```{r}
+ggplot() +
+  geom_point(data = nhanes_full,
+             aes(x = RIDAGEYR, y = SBP, color = IPR_Category),
+             alpha = 0.1) +
+  geom_line(data = new_data_income,
+            aes(x = RIDAGEYR, y = SBP_pred_income, color = IPR_Category),
+            linewidth = 1.2) +
+  labs(
+    title = "Adjusted SBP vs Age by Income Category",
+    x = "Age (years)",
+    y = "Predicted Systolic BP",
+    color = "Income Category"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5, face = "bold")
+  )
+
+```
+
+### Race
+
+```{r}
+ model_race <- nhanes_full %>% 
+  lm(SBP ~ RIDAGEYR*raceeth  + Insurance_Status + sex +  IPR_Category + antihypertensives, data = .)
+ 
+  tbl_regression(model_race)  %>%
+  bold_labels()%>% 
+  as_gt() %>%
+  tab_options(
+    table.font.size = "small",
+    data_row.padding = px(2)
+  )
+
+# tbl_race$table_body %>%
+#   filter(str_detect(variable, "raceeth")) %>%
+#   select(label, estimate, ci, p.value) %>%
+#   gt() %>%
+#   cols_label(
+#     label = "Race/Ethnicity Term",
+#     estimate = "Beta",
+#     ci = "95% CI",
+#     p.value = "p-value"
+#   ) %>%
+#   fmt_number(
+#     columns = c(estimate, p.value),
+#     decimals = 3
+#   ) %>%
+#   tab_header(
+#     title = "Regression Results: Race/Ethnicity and SBP"
+#   )
+```
+
+```{r}
+# Define the age range and racial/ethnic groups
+age_range <- seq(18, 80, by = 1)
+race_ethnicities <- c("Mexican American", "Other Hispanic", "Non-Hispanic White", 
+                      "Non-Hispanic Black", "Non-Hispanic Asian", "Other Race - Including Multi-Racial")
+
+# Create the prediction grid
+new_data_race <- expand.grid(
+  RIDAGEYR = age_range,
+  raceeth = race_ethnicities,
+  sex = "Male",                   # Adjust as needed
+  Insurance_Status = "Insured",   # Adjust as needed
+  IPR_Category = "Middle Income", # Adjust as needed
+  antihypertensives = "Not on Meds" # Adjust as needed
+)
+# Generate predicted SBP values
+new_data_race$SBP_pred_race <- predict(model_race, newdata = new_data_race)
+
+```
+
+```{r}
+
+
+ggplot() +
+  # Scatter plot of observed data
+  geom_point(data = nhanes_full, aes(x = RIDAGEYR, y = SBP, color = raceeth), alpha = 0.1) +
+  # Line plot of predicted SBP
+  geom_line(data = new_data_race, aes(x = RIDAGEYR, y = SBP_pred_race, color = raceeth), linewidth = 1.2) +
+  labs(
+    title = "Predicted SBP vs Age by Race/Ethnicity",
+    x = "Age (years)",
+    y = "Predicted Systolic BP",
+    color = "Race/Ethnicity"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5, face = "bold")
+  )
+
+```
+
+```{r}
+
+
+# # Create a grid of values for prediction
+# new_data <- expand.grid(
+#   RIDAGEYR = seq(min(nhanes_full$RIDAGEYR), max(nhanes_full$RIDAGEYR), length.out = 1000),
+#   raceeth = unique(nhanes_full$raceeth),
+#   Insurance_Status = "Insured",        # hold covariates constant (or set to common level)
+#   sex = "Male",
+#   IPR_Category = "Middle Income"
+# )
+# 
+# # Get predicted SBP from the model
+# new_data$SBP_pred <- predict(model_race, newdata = new_data)
+
+```
+
+```{r}
+# ggplot() +
+#   geom_point(data =  nhanes_full,aes(x = RIDAGEYR,y = SBP,color = raceeth),alpha = 0.1)+
+#   geom_line(data =  new_data, aes(x = RIDAGEYR, y = SBP_pred,color = raceeth),linewidth = 1) +
+#  # scale_color_viridis_d(option = "viridis") +
+#   labs(
+#     title = "Adjusted SBP vs Age by Race/Ethnicity",
+#     x = "Age (years)",
+#     y = "Predicted Systolic BP",
+#     color = "Race/Ethnicity"
+#   ) +
+#   theme_minimal() +
+#   theme(
+#     legend.position = "bottom",
+#     plot.title = element_text(hjust = 0.5, face = "bold")
+#   )
+
+```
+
+```{r}
+# Create a clean prediction grid with evenly spaced ages for each income group
+new_data <- expand.grid(
+  RIDAGEYR = seq(18, 80, by = 1),  # evenly spaced ages
+  IPR_Category = c("Low Income", "Middle Income", "High Income"),
+  sex = "Male",
+  Insurance_Status = "Insured",
+  raceeth = "Mexican American",
+  antihypertensives = "Not on Meds"
+  
+)
+
+```
+
+```{r}
+
+
+# Get predictions from your model
+new_data$SBP_pred_income <- predict(model_income, newdata = new_data)
+
+
+ggplot() +
+  geom_point(data = nhanes_full,
+             aes(x = RIDAGEYR, y = SBP, color = IPR_Category),
+             alpha = 0.1) +
+  geom_line(data = new_data,
+            aes(x = RIDAGEYR, y = SBP_pred_income, color = IPR_Category),
+            linewidth = 1.2) +
+  labs(
+    title = "Adjusted SBP vs Age by Income Category",
+    x = "Age (years)",
+    y = "Predicted Systolic BP",
+    color = "Income Category"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5, face = "bold")
+  )
+```
+
+### GAM
+
+```{r}
+library(mgcv)
+
+model_gam <- nhanes_full %>%
+  filter(flag == "In Regression Sample") %>%
+  gam(SBP ~ s(RIDAGEYR) + antihypertensives, data = .)
+
+tidy(model_gam)
+summary(model_gam)
+
+ tbl_regression(model_gam) %>%
+  bold_labels()
+
+```
+
+```{r}
+anova(model_full, model_gam, test = "F")
+
+```
+
+```{r}
+anova_result <- anova(model_full, model_gam, test = "F")
+
+anova_table <- as.data.frame(anova_result) %>%
+  rownames_to_column("Model") %>%
+  gt() %>%
+  tab_header(
+    title = "ANOVA Comparison of Linear Model vs GAM",
+    subtitle = "F-test for improvement in model fit"
+  ) %>%
+  fmt_number(columns = where(is.numeric), decimals = 3) %>%
+  cols_label(
+    Model = "Model",
+    Res.Df = "Residual DF",
+    RSS = "Residual SS",
+    Df = "Degrees of Freedom",
+    `Sum of Sq` = "Sum of Squares",
+    F = "F-statistic",
+    `Pr(>F)` = "p-value"
+  )
+anova_table
+```
+
+```{r}
+# Create prediction data frame
+new_data <- tibble(
+  RIDAGEYR = seq(min(nhanes_full$RIDAGEYR, na.rm = TRUE),
+                 max(nhanes_full$RIDAGEYR, na.rm = TRUE),
+                 length.out = 100),
+  antihypertensives = "Not on Meds"  # or another reference level
+)
+
+# Get fitted values
+new_data$SBP_pred <- predict(model_gam, newdata = new_data)
+
+# Plot
+ggplot()+
+  geom_point(data = nhanes_full,aes(x = RIDAGEYR, y = SBP,color = antihypertensives),alpha = 0.3)+
+  geom_line(data= new_data, aes(x = RIDAGEYR, y = SBP_pred),color = "steelblue", linewidth = 1.2) +
+  labs(
+    title = "GAM-Predicted Systolic BP vs Age",
+    x = "Age (years)",
+    y = "Predicted SBP (mmHg)",
+    color = "Medication Status"
+  ) +
+  theme_minimal() +
+  theme( legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5, face = "bold"))
+
+```
+
+### Diastolic BP
+
+```{r}
+nhanes_full %>% filter(!is.na (Insurance_Status)) %>% 
+  ggplot( aes(x = RIDAGEYR, y = DBP)) +
+  geom_point(aes(color = factor(antihypertensives)),alpha = 0.5) +
+  geom_smooth( se = FALSE,linewidth = 1,color = "black") +
+labs(title = "Association Between Age and Diastolic BP",
+       x = "Age (Years)", y = "Diastolic Blood Pressure (mmHg)",
+     color = "Medication Status")+
+  theme(legend.position = "bottom") +
+   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+
+
+nhanes_full %>% filter(!is.na (Insurance_Status)) %>% 
+  ggplot( aes(x = RIDAGEYR, y = DBP,color = factor(antihypertensives))) +
+  geom_point(alpha = 0.1) +
+  geom_smooth( se = FALSE,linewidth = 1) +
+  labs(title = "Association Between Age and  Diastolic BP by Antihypertensive Use",
+       x = "Age (Years)", y = " Diastolic Blood Pressure (mmHg)",
+     color = "Medication Status")+
+  theme(legend.position = "bottom") +
+   theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+```{r}
+
+nhanes_full %>% filter(!is.na (Insurance_Status)) %>% 
+  ggplot( aes(x = RIDAGEYR, y = DBP)) +
+  geom_point(aes(color = factor(antihypertensives)),alpha = 0.5) +
+  geom_smooth( se = FALSE,linewidth = 1,color = "black") +
+  labs(title = "Diastolic BP vs Age ", color = "Antihypertensives")+
+  theme(legend.position = "bottom")
+```
